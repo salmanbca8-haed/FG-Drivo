@@ -1,0 +1,19 @@
+{
+  "name": "fg-drivo-frontend",
+  "version": "1.0.0",
+  "description": "FG DRIVO - Dindigul Taxi Booking Platform Frontend",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "canvas-confetti": "^1.9.4",
+    "leaflet": "^1.9.4",
+    "lucide": "^0.460.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "vite": "^6.0.1"
+  }
+}

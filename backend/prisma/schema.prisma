@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  DRIVER
+  ADMIN
+  DISPATCHER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VehicleCategory {
+  AUTO
+  MINI
+  SEDAN
+  SUV
+}
+
+enum VehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum BookingStatus {
+  PENDING
+  ASSIGNED
+  DRIVER_ARRIVED
+  TRIP_STARTED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model User {
+  id              String         @id @default(uuid())
+  name            String
+  email           String?        @unique
+  phone           String         @unique
+  passwordHash    String
+  role            Role           @default(CUSTOMER)
+  status          UserStatus     @default(ACTIVE)
+  profilePic      String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  driverProfile   DriverProfile?
+  customerBookings Booking[]     @relation("CustomerBookings")
+  driverBookings  Booking[]      @relation("DriverBookings")
+  supportTickets  SupportTicket[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+
+  @@index([role])
+  @@index([phone])
+}
+
+model DriverProfile {
+  id                 String          @id @default(uuid())
+  userId             String          @unique
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseNumber      String          @unique
+  licenseExpiry      DateTime?
+  kycStatus          KycStatus       @default(PENDING)
+  isAvailable        Boolean         @default(false)
+  isShiftActive      Boolean         @default(false)
+  currentLat         Float?
+  currentLng         Float?
+  lastLocationUpdate DateTime?
+  rating             Float           @default(5.0)
+  totalTrips         Int             @default(0)
+  documentsJson      String?         @db.Text
+  assignedVehicleId  String?
+  assignedVehicle    Vehicle?        @relation(fields: [assignedVehicleId], references: [id])
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([isAvailable, isShiftActive])
+}
+
+model Vehicle {
+  id               String          @id @default(uuid())
+  regNumber        String          @unique
+  make             String
+  model            String
+  year             Int
+  color            String
+  category         VehicleCategory
+  capacity         Int             @default(4)
+  fuelType         String?         @default("PETROL")
+  status           VehicleStatus   @default(ACTIVE)
+  insuranceExpiry  DateTime?
+  fitnessExpiry    DateTime?
+  driverProfiles   DriverProfile[]
+  bookings         Booking[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([category, status])
+}
+
+model Booking {
+  id                 String          @id @default(uuid())
+  bookingRef         String          @unique
+  customerId         String
+  customer           User            @relation("CustomerBookings", fields: [customerId], references: [id])
+  driverId           String?
+  driver             User?           @relation("DriverBookings", fields: [driverId], references: [id])
+  vehicleId          String?
+  vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
+  status             BookingStatus   @default(PENDING)
+  pickupAddress      String          @db.Text
+  pickupLat          Float
+  pickupLng          Float
+  dropAddress        String          @db.Text
+  dropLat            Float
+  dropLng            Float
+  distanceKm         Float
+  durationMins       Int
+  category           VehicleCategory
+  isScheduled        Boolean         @default(false)
+  scheduledFor       DateTime?
+  baseFare           Float
+  perKmRate          Float
+  estimatedFare      Float
+  finalFare          Float?
+  otpCode            String          @default("1234")
+  cancellationReason String?         @db.Text
+  cancelledBy        String?
+  fareRuleSnapshot   String?         @db.Text
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  payments           Payment[]
+  locationLogs       LocationLog[]
+  supportTickets     SupportTicket[]
+
+  @@index([customerId])
+  @@index([driverId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Payment {
+  id               String          @id @default(uuid())
+  bookingId        String
+  booking          Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  amount           Float
+  method           PaymentMethod   @default(CASH)
+  status           PaymentStatus   @default(PENDING)
+  transactionRef   String?         @unique
+  gatewayPaymentId String?
+  gatewaySignature String?
+  collectedBy      String?
+  notes            String?         @db.Text
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([method])
+}
+
+model LocationLog {
+  id          String    @id @default(uuid())
+  bookingId   String
+  booking     Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  driverId    String
+  lat         Float
+  lng         Float
+  speed       Float?
+  heading     Float?
+  recordedAt  DateTime  @default(now())
+
+  @@index([bookingId, recordedAt])
+}
+
+model FareRule {
+  id                       String          @id @default(uuid())
+  category                 VehicleCategory @unique
+  baseFare                 Float
+  baseDistanceKm           Float           @default(2.0)
+  perKmRate                Float
+  minimumFare              Float
+  waitingChargePerMin      Float           @default(2.0)
+  nightSurchargeMultiplier Float           @default(1.25)
+  peakHourMultiplier       Float           @default(1.15)
+  isActive                 Boolean         @default(true)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+}
+
+model ServiceBoundary {
+  id                 String    @id @default(uuid())
+  name               String    @default("Dindigul City Boundary")
+  centerLat          Float     @default(10.3673)
+  centerLng          Float     @default(77.9803)
+  radiusKm           Float     @default(25.0)
+  polygonCoordinates String?   @db.Text
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model SupportTicket {
+  id              String          @id @default(uuid())
+  ticketRef       String          @unique
+  customerId      String
+  customer        User            @relation(fields: [customerId], references: [id])
+  bookingId       String?
+  booking         Booking?        @relation(fields: [bookingId], references: [id])
+  subject         String
+  message         String          @db.Text
+  priority        TicketPriority  @default(MEDIUM)
+  status          TicketStatus    @default(OPEN)
+  resolutionNotes String?         @db.Text
+  assignedStaffId String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  actorId    String?
+  actor      User?     @relation(fields: [actorId], references: [id])
+  actorRole  String
+  action     String
+  entityType String
+  entityId   String?
+  details    String?   @db.Text
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String    @db.Text
+  type      String    @default("INFO")
+  isRead    Boolean   @default(false)
+  link      String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, isRead])
+}
