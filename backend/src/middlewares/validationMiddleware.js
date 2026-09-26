@@ -3,15 +3,23 @@ const { VEHICLE_CATEGORIES, BOOKING_STATUS, PAYMENT_METHODS } = require('../conf
 
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  phone: z.string().regex(/^[6-9]\d{9}$/, 'Please enter a valid 10-digit Indian mobile number'),
-  email: z.string().email('Invalid email address').optional().or(z.literal('')),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  phone: z.string().transform(v => {
+    let clean = (v || '').trim().replace(/[\s\-\(\)]/g, '');
+    if (clean.startsWith('+91')) clean = clean.slice(3);
+    else if (clean.startsWith('91') && clean.length === 12) clean = clean.slice(2);
+    else if (clean.startsWith('0') && clean.length === 11) clean = clean.slice(1);
+    return clean;
+  }).refine(v => /^[6-9]\d{9}$/.test(v), {
+    message: 'Please enter a valid 10-digit Indian mobile number (e.g. 9842100001)'
+  }),
+  email: z.string().email('Invalid email address format').optional().or(z.literal('')).nullable(),
+  password: z.string().min(4, 'Password must be at least 4 characters'),
   role: z.enum(['CUSTOMER', 'DRIVER', 'ADMIN', 'DISPATCHER']).default('CUSTOMER')
 });
 
 const loginSchema = z.object({
-  identifier: z.string().min(3, 'Phone number or email required'),
-  password: z.string().min(4, 'Password is required')
+  identifier: z.string().min(3, 'Phone number or email required').transform(v => (v || '').trim()),
+  password: z.string().min(3, 'Password is required')
 });
 
 const bookingSchema = z.object({
@@ -52,10 +60,10 @@ function validate(schema) {
       next();
     } catch (err) {
       if (err instanceof z.ZodError) {
-        const errorMessages = err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+        const errorMessages = err.errors.map(e => `${e.message}`).join(', ');
         return res.status(400).json({
           success: false,
-          error: `Validation error: ${errorMessages}`,
+          error: `${errorMessages}`,
           details: err.errors
         });
       }
